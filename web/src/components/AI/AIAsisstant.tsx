@@ -46,11 +46,11 @@ const AIAssistant: React.FC = () => {
       setError('Please enter a query');
       return;
     }
-  
+
     setIsLoading(true);
     setResponse(null);
     setError(null);
-  
+
     try {
       const nlpResponse = await fetch('/api/process-query', {
         method: 'POST',
@@ -59,23 +59,15 @@ const AIAssistant: React.FC = () => {
         },
         body: JSON.stringify({ query, context }),
       });
-  
-      const contentType = nlpResponse.headers.get("content-type");
-      if (contentType && contentType.indexOf("application/json") !== -1) {
-        if (!nlpResponse.ok) {
-          const errorData = await nlpResponse.json();
-          throw new Error(errorData.detail || errorData.error || 'Failed to process query');
-        }
-  
-        const nlpResult: NLPResult = await nlpResponse.json();
-        setResponse(nlpResult);
-        setContext(nlpResult.intent);
-      } else {
-        // Server is returning non-JSON response
-        const text = await nlpResponse.text();
-        console.error('Server returned non-JSON response:', text);
-        throw new Error('Server error: Received non-JSON response');
+
+      if (!nlpResponse.ok) {
+        const errorData = await nlpResponse.json();
+        throw new Error(errorData.error || 'Failed to process query');
       }
+
+      const nlpResult: NLPResult = await nlpResponse.json();
+      setResponse(nlpResult);
+      setContext(nlpResult.intent);
     } catch (error) {
       console.error('Error details:', error);
       setError(`Error processing query: ${error instanceof Error ? error.message : 'Please try again'}`);

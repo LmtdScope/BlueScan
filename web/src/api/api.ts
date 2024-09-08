@@ -1,5 +1,5 @@
 import { urlJoin } from "@/lib/utils";
-import { MRUInfo } from "./types";
+import { MRUInfo } from "../lib/types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL as string;
 

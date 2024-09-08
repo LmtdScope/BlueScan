@@ -1,6 +1,6 @@
 import { ActionConfirmationStatus } from "@stackr/sdk";
 import express, { Request, Response } from "express";
-import { counterMachine } from "./stackr/machine";
+import { blockExplorerMachine } from "./stackr/machine";
 import { mru } from "./stackr/mru";
 import { schemas } from "./stackr/schemas";
 import { transitions } from "./stackr/transitions";
@@ -21,7 +21,7 @@ export async function setupServer() {
   });
 
   const { stateMachines, config, getStfSchemaMap, submitAction } = mru;
-  const machine = stateMachines.getFirst<typeof counterMachine>();
+  const machine = stateMachines.getFirst<typeof blockExplorerMachine>();
 
   if (!machine) {
     throw new Error("Machine not found");
@@ -81,6 +81,30 @@ export async function setupServer() {
       res.status(400).send({ error: e.message });
     }
     return;
+  });
+
+  // New endpoint for storing query results
+  app.post("/storeQueryResult", async (req: Request, res: Response) => {
+    try {
+      const { msgSender, signature, inputs } = req.body;
+
+      const schema = schemas.StoreQueryResultSchema;
+
+      const signedAction = schema.actionFrom({
+        msgSender,
+        signature,
+        inputs,
+      });
+
+      const ack = await submitAction("storeQueryResult", signedAction);
+      const { logs, errors } = await ack.waitFor(ActionConfirmationStatus.C1);
+      if (errors?.length) {
+        throw new Error(errors[0].message);
+      }
+      res.status(201).send({ logs, ackHash: ack.hash });
+    } catch (e: any) {
+      res.status(400).send({ error: e.message });
+    }
   });
 
   app.get("/", (_req: Request, res: Response) => {

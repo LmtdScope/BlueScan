@@ -526,6 +526,11 @@ class BlockExplorerNLP {
 const nlpProcessor = new BlockExplorerNLP();
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  console.log("HERE!!")
+  console.log("HERE!!")
+  console.log("HERE!!")
+  console.log("HERE!!")
+  console.log("HERE!!")
   if (req.method === 'POST') {
     const { query, context } = req.body;
     if (!query) {
@@ -533,6 +538,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     try {
+      const nlpProcessor = new BlockExplorerNLP();
       const result = await nlpProcessor.processQuery(query, context);
       res.status(200).json(result);
     } catch (error) {
@@ -541,6 +547,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   } else {
     res.setHeader('Allow', ['POST']);
-    res.status(405).end(`Method ${req.method} Not Allowed`);
+    res.status(405).json({ error: 'Method Not Allowed', detail: `HTTP method ${req.method} is not allowed` });
   }
 }

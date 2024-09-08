@@ -1,5 +1,8 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback} from 'react';
+import { useAction } from '@/hooks/useAction';
+import { Button } from '../ui/button';
 import { usePrivy } from '@privy-io/react-auth';
+import { PrivyProvider } from '@privy-io/react-auth';
 import { useWalletClient } from 'wagmi';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
@@ -28,8 +31,10 @@ const AIAssistant: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [context, setContext] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const { user, authenticated } = usePrivy();
+  const { login, authenticated, ready } = usePrivy();
   const { data: walletClient } = useWalletClient();
+  const { submit } = useAction(); // Use the useAction hook
+
 
   const handleQueryChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setQuery(event.target.value);
@@ -41,11 +46,11 @@ const AIAssistant: React.FC = () => {
       setError('Please enter a query');
       return;
     }
-
+  
     setIsLoading(true);
     setResponse(null);
     setError(null);
-
+  
     try {
       const nlpResponse = await fetch('/api/process-query', {
         method: 'POST',
@@ -54,21 +59,74 @@ const AIAssistant: React.FC = () => {
         },
         body: JSON.stringify({ query, context }),
       });
-
-      if (!nlpResponse.ok) {
-        throw new Error('Failed to process query');
+  
+      const contentType = nlpResponse.headers.get("content-type");
+      if (contentType && contentType.indexOf("application/json") !== -1) {
+        if (!nlpResponse.ok) {
+          const errorData = await nlpResponse.json();
+          throw new Error(errorData.detail || errorData.error || 'Failed to process query');
+        }
+  
+        const nlpResult: NLPResult = await nlpResponse.json();
+        setResponse(nlpResult);
+        setContext(nlpResult.intent);
+      } else {
+        // Server is returning non-JSON response
+        const text = await nlpResponse.text();
+        console.error('Server returned non-JSON response:', text);
+        throw new Error('Server error: Received non-JSON response');
       }
-
-      const nlpResult: NLPResult = await nlpResponse.json();
-      setResponse(nlpResult);
-      setContext(nlpResult.intent);
     } catch (error) {
-      setError('Error processing query. Please try again.');
-      console.error('Error processing query:', error);
+      console.error('Error details:', error);
+      setError(`Error processing query: ${error instanceof Error ? error.message : 'Please try again'}`);
     } finally {
       setIsLoading(false);
     }
   }, [query, context]);
+
+  const handlePublishResults = async () => {
+    if (!response) {
+      setError('No results to publish');
+      return;
+    }
+  
+    setIsLoading(true);
+  
+    try {
+      if (!authenticated) {
+        // Initiate login process
+        await login();
+        // After login, we need to wait for authentication to complete
+        // This might require setting up an effect or using Privy's callbacks
+        // For now, we'll add a small delay and check again
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        if (!authenticated) {
+          throw new Error('Failed to authenticate. Please try again.');
+        }
+      }
+  
+      const result = await submit('storeQueryResult', {
+        intent: response.intent,
+        confidence: response.confidence,
+        entities: JSON.stringify(response.entities),
+        data: JSON.stringify(response.data)
+      });
+      
+      console.log('Published result:', result);
+      setError(null);
+      // Show a success message
+      alert('Results successfully published to blockchain!');
+    } catch (error) {
+      console.error('Error publishing results:', error);
+      if (error instanceof Error) {
+        setError(`Failed to publish results: ${error.message}`);
+      } else {
+        setError('Failed to publish results to blockchain');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const renderData = (intent: string, data: any) => {
     switch (intent) {
@@ -195,6 +253,21 @@ const AIAssistant: React.FC = () => {
 
 
   return (
+    <PrivyProvider
+    appId="cm05ic38y06rf10xx8w0u38gu"
+    config={{
+      // Customize Privy's appearance in your app
+      appearance: {
+        theme: 'light',
+        accentColor: '#676FFF',
+        logo: 'https://your-logo-url',
+      },
+      // Create embedded wallets for users who don't have a wallet
+      embeddedWallets: {
+        createOnLogin: 'users-without-wallets',
+      },
+    }}
+  >
     <div className="p-4 bg-white rounded-lg shadow">
       <h2 className="text-xl font-bold mb-4">AI Block Explorer Assistant for Base Blockchain</h2>
       <div className="mb-4">
@@ -211,14 +284,14 @@ const AIAssistant: React.FC = () => {
           aria-label="Query input"
         />
       </div>
-      <button
+      <Button
         onClick={processQuery}
         disabled={isLoading}
         className="w-full bg-blue-500 text-white p-2 rounded-md hover:bg-blue-600 disabled:bg-blue-300"
         aria-label="Process query"
       >
         {isLoading ? 'Processing...' : 'Process Query'}
-      </button>
+      </Button>
       {error && <div className="mt-4 p-2 bg-red-100 text-red-700 rounded-md">{error}</div>}
       {response && (
         <div className="mt-4 p-4 bg-gray-100 rounded-md">
@@ -234,16 +307,19 @@ const AIAssistant: React.FC = () => {
           </ul>
           <h4 className="font-bold mt-2">Data:</h4>
           {renderData(response.intent, response.data)}
-        </div>
-      )}
-      {authenticated && walletClient && (
-        <div className="mt-4 p-2 bg-green-100 text-green-700 rounded-md">
-          Connected wallet address: {walletClient.getAddress()}
+          
+          <Button
+  onClick={handlePublishResults}
+  disabled={isLoading || !ready}
+  className="mt-4 bg-green-500 text-white p-2 rounded-md hover:bg-green-600 disabled:bg-green-300"
+>
+  {isLoading ? 'Publishing...' : authenticated ? 'Publish Results to Blockchain' : 'Connect Wallet to Publish'}
+</Button>
         </div>
       )}
     </div>
+    </PrivyProvider>
   );
 };
 
 export default AIAssistant;
-  
